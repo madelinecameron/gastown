@@ -1065,21 +1065,27 @@ notifyWitness:
 			fmt.Printf("%s Work needs recovery (push or MR failed) — session preserved\n", style.Bold.Render("⚠"))
 		}
 
-		// Sync worktree to main so the polecat is ready for new assignments.
+		// Sync worktree to origin/main so the polecat is ready for new assignments.
 		// Phase 3 of persistent-polecat-pool: DONE→IDLE syncs to main and deletes old branch.
 		// Non-fatal: if sync fails, the polecat is still IDLE and the Witness
 		// or next gt sling can handle the branch state.
+		//
+		// Uses detached HEAD at origin/<default> instead of checking out the local
+		// branch. In git worktrees, `git checkout main` fails with "already checked
+		// out at <parent>" because the parent repo has main checked out. Detaching
+		// HEAD avoids that restriction and lets us delete the old feature branch.
 		if cwdAvailable && !pushFailed {
 			// Remember the old branch so we can delete it after switching
 			oldBranch := branch
+			originRef := fmt.Sprintf("origin/%s", defaultBranch)
 
-			fmt.Printf("%s Syncing worktree to %s...\n", style.Bold.Render("→"), defaultBranch)
-			if err := g.Checkout(defaultBranch); err != nil {
-				style.PrintWarning("could not checkout %s: %v (worktree stays on feature branch)", defaultBranch, err)
-			} else if err := g.Pull("origin", defaultBranch); err != nil {
-				style.PrintWarning("could not pull %s: %v (worktree on %s but may be stale)", defaultBranch, defaultBranch, err)
+			fmt.Printf("%s Syncing worktree to %s...\n", style.Bold.Render("→"), originRef)
+			// Fetch latest before detaching so we have the newest origin ref
+			_ = g.Fetch("origin")
+			if err := g.CheckoutDetach(originRef); err != nil {
+				style.PrintWarning("could not detach HEAD at %s: %v (worktree stays on feature branch)", originRef, err)
 			} else {
-				fmt.Printf("%s Worktree synced to %s\n", style.Bold.Render("✓"), defaultBranch)
+				fmt.Printf("%s Worktree synced to %s (detached HEAD)\n", style.Bold.Render("✓"), originRef)
 			}
 
 			// Delete the old polecat branch (non-fatal: cleanup only).

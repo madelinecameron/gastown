@@ -414,6 +414,15 @@ func (g *Git) Checkout(ref string) error {
 	return err
 }
 
+// CheckoutDetach detaches HEAD at the given ref.
+// Equivalent to: git checkout --detach <ref>
+// This is useful in worktrees where checking out a branch that exists in another
+// worktree is not allowed. Detaching HEAD avoids that restriction.
+func (g *Git) CheckoutDetach(ref string) error {
+	_, err := g.run("checkout", "--detach", ref)
+	return err
+}
+
 // CheckoutNewBranch creates a new branch from startPoint and checks it out.
 // Equivalent to: git checkout -b <branch> <startPoint>
 func (g *Git) CheckoutNewBranch(branch, startPoint string) error {

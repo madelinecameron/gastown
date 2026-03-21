@@ -1584,13 +1584,30 @@ func (m *Manager) ReuseIdlePolecat(name string, opts AddOptions) (*Polecat, erro
 		return nil, fmt.Errorf("start point %s not found — fall back to full repair", startPoint)
 	}
 
-	// GH#2536: Clean worktree state before branch switch — the worktree may have
-	// stale state from a previous dog/pool dispatch (uncommitted changes, untracked
-	// files, detached HEAD, or checked out on an old dog/alpha-* branch).
-	// Reset to the start point directly (not HEAD) to avoid "local changes would
-	// be overwritten" errors when the start point has different file content.
-	_ = polecatGit.ResetHard(startPoint)
-	_ = polecatGit.CleanForce()
+	// Clean worktree state before branch switch — the worktree may have stale
+	// state from prior work (uncommitted changes, untracked files, detached HEAD,
+	// or checked out on an old feature branch with prior commits stacked up).
+	//
+	// Detach HEAD first so we can delete old local branches. In worktrees,
+	// you can't delete a branch that's currently checked out.
+	_ = polecatGit.CheckoutDetach(startPoint)
+	if err := polecatGit.ResetHard(startPoint); err != nil {
+		return nil, fmt.Errorf("resetting worktree to %s: %w", startPoint, err)
+	}
+	if err := polecatGit.CleanForce(); err != nil {
+		// Non-fatal: untracked file cleanup failure shouldn't block reuse
+		style.PrintWarning("could not clean worktree: %v", err)
+	}
+
+	// Delete stale local polecat branches to prevent accumulation.
+	// Each reuse creates a new timestamped branch; without cleanup, old branches
+	// pile up across reuse cycles. Now that HEAD is detached, we can safely
+	// delete any local branch.
+	if staleBranches, err := polecatGit.ListBranches(fmt.Sprintf("polecat/%s/*", name)); err == nil {
+		for _, b := range staleBranches {
+			_ = polecatGit.DeleteBranch(b, true)
+		}
+	}
 
 	// Re-provision CLAUDE.md after reset — git reset --hard restores the tracked
 	// version (which lacks gt done instructions), and git clean -f removes any
@@ -1605,8 +1622,8 @@ func (m *Manager) ReuseIdlePolecat(name string, opts AddOptions) (*Polecat, erro
 	branchName := m.buildBranchName(name, opts.HookBead)
 	if err := polecatGit.CheckoutNewBranch(branchName, startPoint); err != nil {
 		// checkout -b fails if branch already exists or other edge case.
-		// Fall back to: checkout start point, then create branch.
-		_ = polecatGit.Checkout(startPoint)
+		// Fall back to: detach at start point, then create branch.
+		_ = polecatGit.CheckoutDetach(startPoint)
 		if err2 := polecatGit.CheckoutNewBranch(branchName, startPoint); err2 != nil {
 			return nil, fmt.Errorf("creating branch %s from %s (retry after cleanup): %w", branchName, startPoint, err2)
 		}
