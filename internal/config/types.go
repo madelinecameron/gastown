@@ -1250,6 +1250,11 @@ type MergeQueueConfig struct {
 	// StaleClaimTimeout is how long a claimed MR can go without updates before
 	// being considered abandoned and eligible for re-claim (e.g., "30m").
 	StaleClaimTimeout string `json:"stale_claim_timeout,omitempty"`
+
+	// MergeStrategy controls how the refinery lands completed work:
+	// "direct" (ff-only merge+push) or "pr" (create GitHub PR).
+	// Empty defaults to the formula default.
+	MergeStrategy string `json:"merge_strategy,omitempty"`
 }
 
 // OnConflict strategy constants.
